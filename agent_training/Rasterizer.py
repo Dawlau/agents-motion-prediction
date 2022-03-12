@@ -38,41 +38,43 @@ class Rasterizer:
 		return x, y
 
 	@staticmethod
-	def rasterize_frame(roadgraph, traffic_lights, agents):
-		x_min, y_min, x_max, y_max = Rasterizer.get_boundaries(roadgraph, traffic_lights, agents)
+	def rasterize(roadgraph, traffic_lights, target_agent, surrounding_agents):
+		pass
+		# print(target_agent.shape)
+		# x_min, y_min, x_max, y_max = Rasterizer.get_boundaries(roadgraph, traffic_lights, agents)
 
-		image = np.array(np.zeros(shape = (Rasterizer.image_width + 1, Rasterizer.image_height + 1, 3)))
-		for i in range(Rasterizer.image_width):
-			for j in range(Rasterizer.image_height):
-				image[i][j] = (1, 1, 1)
+		# image = np.array(np.zeros(shape = (Rasterizer.image_width + 1, Rasterizer.image_height + 1, 3)))
+		# for i in range(Rasterizer.image_width):
+		# 	for j in range(Rasterizer.image_height):
+		# 		image[i][j] = (1, 1, 1)
 
-		for road in roadgraph:
-			for vertex in road.get_polyline():
-				x, y = Rasterizer.get_normalized_coordinates(vertex, x_min, y_min, x_max, y_max)
-				x = int(x)
-				y = int(y)
-				image[x][y] = road.get_color()
+		# for road in roadgraph:
+		# 	for vertex in road.get_polyline():
+		# 		x, y = Rasterizer.get_normalized_coordinates(vertex, x_min, y_min, x_max, y_max)
+		# 		x = int(x)
+		# 		y = int(y)
+		# 		image[x][y] = road.get_color()
 
-		for traffic_light in traffic_lights:
-			x, y = Rasterizer.get_normalized_coordinates((traffic_light.get_x(), traffic_light.get_y()), x_min, y_min, x_max, y_max)
-			x = int(x)
-			y = int(y)
-			for i in range(x - 1, x + 1):
-				for j in range(y - 1, y + 1):
-					image[i][j] = traffic_light.get_color()
+		# for traffic_light in traffic_lights:
+		# 	x, y = Rasterizer.get_normalized_coordinates((traffic_light.get_x(), traffic_light.get_y()), x_min, y_min, x_max, y_max)
+		# 	x = int(x)
+		# 	y = int(y)
+		# 	for i in range(x - 1, x + 1):
+		# 		for j in range(y - 1, y + 1):
+		# 			image[i][j] = traffic_light.get_color()
 
-		for agent in agents:
-			vertices = agent.get_bbox()
-			for vertex in vertices:
-				x, y = Rasterizer.get_normalized_coordinates(vertex, x_min, y_min, x_max, y_max)
+		# for agent in agents:
+		# 	vertices = agent.get_bbox()
+		# 	for vertex in vertices:
+		# 		x, y = Rasterizer.get_normalized_coordinates(vertex, x_min, y_min, x_max, y_max)
 
-				x = int(x)
-				y = int(y)
+		# 		x = int(x)
+		# 		y = int(y)
 
-				image[x][y] = agent.get_color()
+		# 		image[x][y] = agent.get_color()
 
-		return image
 
 		# import matplotlib.pyplot as plt
 		# import time
 		# plt.imsave(f'image{time.time()}.png', image)
+		# return image

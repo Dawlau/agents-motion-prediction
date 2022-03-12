@@ -1,25 +1,35 @@
 import math
 import numpy as np
+import tensorflow as tf
 
 class Agent:
 
-	sdc_color = (1, 0.725, 0.796)
+	SDC_COLOR = (1, 0.725, 0.796)
 
-	colors = {
+	COLORS = {
 		1 : (0.305, 0.956, 0.811),
 		2 : (0.682, 0.305, 0.956),
 		3 : (0.074, 0.082, 0.847)
 	}
 
-	def __init__(self, type, bbox_yaw, length, width, x, y, is_sdc):
-		self.type = type
+	def __init__(self,
+		type:	   tf.float32,
+		bbox_yaw:  tf.float32,
+		length:    tf.float32,
+		width:     tf.float32,
+		x: 	   	   tf.float32,
+		y: 	   	   tf.float32,
+		is_sdc:    tf.int64
+	):
+
+		self.type 	  = type
 		self.bbox_yaw = math.pi / 2 - bbox_yaw
-		self.length = length
-		self.width = width
-		self.x = x
-		self.y = y
-		self.is_sdc = is_sdc
-		self.color = Agent.sdc_color if self.is_sdc else Agent.colors[self.type]
+		self.length   = length
+		self.width	  = width
+		self.x 		  = x
+		self.y 		  = y
+		self.is_sdc   = is_sdc
+		self.color 	  = Agent.SDC_COLOR if self.is_sdc else Agent.COLORS[self.type]
 
 	def get_color(self):
 		return self.color
