@@ -40,7 +40,7 @@ state_features = {
 	'state/past/y':
 		tf.io.FixedLenFeature([128, 10], tf.float32, default_value=None),
 	'state/tracks_to_predict':
-		tf.io.FixedLenFeature([128], tf.int64, default_value=None)
+		tf.io.FixedLenFeature([128], tf.int64, default_value=None),
 }
 
 traffic_light_features = {
@@ -199,6 +199,7 @@ class DataLoader:
 					# features of target agent
 					past_target_agent 	 = past_agents[idx]
 					current_target_agent = current_agents[idx]
+					target_agent_type 	 = tf.cast(agent_types[idx], dtype=tf.int32)
 
 					# features of surrounding agents
 					past_surrounding_agents    = tf.concat(
@@ -229,12 +230,13 @@ class DataLoader:
 						roadgraph,
 						traffic_lights,
 						env_context_target_agent,
+						target_agent_type,
 						env_context_surrounding_agents,
 						surrounding_agents_types
 					)
 
 					# yield environment_context, target_agent, surrounding_agents
-					# break
+					break
 
 
 				break
