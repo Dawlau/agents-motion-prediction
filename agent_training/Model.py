@@ -1,30 +1,54 @@
 import tensorflow as tf
-from tensorflow.keras import datasets, layers, models
 from tensorflow import keras
+from tensorflow.keras import layers
 
-class Model:
+
+class ReCoAt(tf.keras.Model):
 
 	def __init__(self):
-		self.model = models.Sequential()
-		self.model.add(layers.Conv2D(1, (3, 3), activation = 'relu', input_shape = (11, 251 * 251, 3)))
-		self.model.add(layers.Flatten())
-		self.model.add(layers.Dense(2 * 80))
-		self.optimizer = keras.optimizers.SGD(learning_rate = 1e-3)
-		self.loss_fn = keras.losses.MeanSquaredError()
-		self.epochs = 1
+		super(ReCoAt, self).__init__()
 
-		print(self.model.summary())
+		self.resnet50 = tf.keras.applications.resnet50.ResNet50(
+			input_shape=(240, 240, 3),
+			include_top=False)
+		self.resnet50_output = tf.keras.Sequential([
+			layers.Dense(128, activation="elu"),
+			layers.Dropout(0.6)
+		])
 
-	def train(self, batch):
-		x_data, y_data = batch
+		self.target_agent_trajectory_encoder = tf.keras.Sequential([
+			tf.keras.layers.Conv1D(64, 3),
+			tf.keras.layers.LSTM(128)
+		])
 
-		for epoch in range(self.epochs):
-			for x, y in zip(x_data, y_data):
-				with tf.GradientTape() as tape:
-					logits = self.model(x.flatten().reshape(-1, 11, 251 * 251, 3), training = True)
-					loss_value = self.loss_fn(y, logits)
+		self.surrounding_agents_trajectory_encoders = [tf.keras.Sequential([
+			tf.keras.layers.Conv1D(64, 3),
+			tf.keras.layers.LSTM(128)
+		]) for i in range(10)]
 
-				grads = tape.gradient(loss_value, self.model.trainable_weights)
-				self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
 
-				print(loss_value)
+
+	def call(self,
+		environment_context: tf.Tensor,
+		target_agent: tf.Tensor,
+		surrounding_agents: tf.Tensor
+		) -> tf.Tensor:
+
+		environment_features = tf.keras.applications.resnet.preprocess_input(environment_context)
+		environment_features = self.resnet50(environment_features)
+		environment_features = self.resnet50_output(environment_features)
+
+		target_agent_features = self.target_agent_trajectory_encoder(target_agent)
+
+		# encoded_trajectories = tf.convert_to_tensor([])
+		# encoded_trajectories = tf.expand_dims(encoded_trajectories, axis=0)
+		# print(encoded_trajectories.shape)
+		for i in range(surrounding_agents.shape[1]):
+			agent = surrounding_agents[ : , i, ...]
+			agent = tf.squeeze(agent, axis=0)
+			print(agent.shape)
+			# print(self.surrounding_agents_trajectory_encoders[i](agent).shape)
+			# encoded_trajectories = tf.concat(
+				# [encoded_trajectories, self.surrounding_agents_trajectory_encoders[i](agent)], 0)
+
+		return target_agent_features

@@ -1,0 +1,33 @@
+white dashed polylines:
+RoadLine-BrokenSingleWhite = 6
+
+grey polygons:
+LaneCenter-Freeway = 1
+LaneCenter-SurfaceStreet = 2
+LaneCenter-BikeLane = 3
+
+white solid polylines:
+RoadLine-SolidSingleWhite = 7
+RoadLine-SolidDoubleWhite = 8
+
+light yellow (nuance) polylines:
+RoadLine-BrokenSingleYellow = 9
+RoadLine-BrokenDoubleYellow = 10
+Roadline-SolidSingleYellow = 11
+Roadline-SolidDoubleYellow = 12
+RoadLine-PassingDoubleYellow = 13
+
+yellow solid (nuance) polylines:
+RoadEdgeBoundary = 15
+RoadEdgeMedian = 16
+
+red circle:
+StopSign = 17
+
+blue poly:
+Crosswalk = 18
+
+orange poly:
+SpeedBump = 19
+
+

@@ -75,11 +75,12 @@ class Rasterizer:
 		return bbox_offset
 
 
+	@staticmethod
 	def draw_target_agent(
 		environment_context: np.array,
 		past_target_agent: tf.Tensor,
 		current_target_agent: tf.Tensor,
-		target_agent_type) -> np.array:
+		target_agent_type: tf.Tensor) -> np.array:
 
 		"""
 			draw target agent information into the environment context
@@ -185,7 +186,7 @@ class Rasterizer:
 	@staticmethod
 	def draw_traffic_lights(
 		environment_context: np.array,
-		traffic_lights: tf.Tensor) -> tf.Tensor:
+		traffic_lights: tf.Tensor) -> np.array:
 
 		for traffic_light in traffic_lights:
 			x, y, state = tf.unstack(traffic_light)
@@ -195,14 +196,81 @@ class Rasterizer:
 			xy = tf.math.round(xy)
 			xy = tf.cast(xy, dtype=tf.int32)
 			xy = tf.squeeze(xy, axis=0).numpy()
-			print(xy.shape)
 
 			environment_context = cv2.circle(
 				environment_context, xy, Rasterizer.TRAFFIC_LIGHTS_RADIUS, Rasterizer.TRAFFIC_LIGHTS_COLORS[state], thickness=-1, lineType=cv2.LINE_AA)
-			break
 
 		return environment_context
 
+
+	@staticmethod
+	def draw_road(
+		environment_context: np.array,
+		road_xy: tf.Tensor,
+		road_type: tf.Tensor) -> np.array:
+
+		_type = road_type.numpy()
+		xy = Rasterizer.apply_global_transformation(road_xy)
+		xy = tf.math.round(xy)
+		xy = tf.cast(xy, dtype=tf.int32).numpy()
+
+		if _type <= 3:
+			environment_context = cv2.polylines(
+				environment_context, [xy], isClosed=False, color=(128, 128, 128), thickness=2, lineType=cv2.LINE_AA)
+		elif _type == 6:
+			pass
+		elif 7 <= _type <= 8:
+			environment_context = cv2.polylines(
+				environment_context, [xy], isClosed=False, color=(255, 255, 255), thickness=1, lineType=cv2.LINE_AA)
+		elif 9 <= _type <= 13:
+			environment_context = cv2.polylines(
+				environment_context, [xy], isClosed=False, color=(255, 255, 128), thickness=1, lineType=cv2.LINE_AA)
+		elif 15 <= _type <= 16:
+			environment_context = cv2.polylines(
+				environment_context, [xy], isClosed=False, color=(255, 255, 0), thickness=1, lineType=cv2.LINE_AA)
+		elif _type == 17:
+			print(xy)
+			environment_context = cv2.circle(
+				environment_context, xy, Rasterizer.TRAFFIC_LIGHTS_RADIUS, Rasterizer.TRAFFIC_LIGHTS_COLORS[state], thickness=-1, lineType=cv2.LINE_AA)
+		elif _type == 18:
+			environment_context = cv2.fillPoly(
+				environment_context, [xy], color=(0, 0, 255), lineType=cv2.LINE_AA)
+		else:
+			environment_context = cv2.fillPoly(
+				environment_context, [xy], color=(255, 165, 0), lineType=cv2.LINE_AA)
+
+		return environment_context
+
+	@staticmethod
+	def draw_roadgraph(
+		environment_context: np.array,
+		roadgraph: tf.Tensor) -> np.array:
+
+		current_start = 0
+		current_type  = roadgraph[0][-1]
+
+		for i, road in enumerate(roadgraph):
+			if road[-1] != current_type:
+				# last_env = environment_context.copy()
+				current_road = roadgraph[current_start : i]
+				current_road_xy = current_road[..., : -1]
+				current_road_type = current_road[-1, -1]
+				environment_context = Rasterizer.draw_road(
+					environment_context, current_road_xy, current_road_type)
+				current_start = i
+				current_type  = road[-1]
+
+				# if current_road_type.numpy() <= 3 and not np.array_equal(last_env, environment_context):
+				# 	return environment_context
+
+		current_road = roadgraph[current_start : -1]
+		current_road_xy = current_road[..., : -1]
+		current_road_type = current_road[-1, -1]
+		environment_context = Rasterizer.draw_road(
+			environment_context, current_road_xy, current_road_type)
+
+
+		return environment_context
 
 	@staticmethod
 	def rasterize(
@@ -215,11 +283,6 @@ class Rasterizer:
 
 		"""
 			document the function
-			Notes:
-				- rotations:
-					apply local rotation for all agents i.e. translate agent into origin and rotate with heading angle and translate back
-					apply global rotation for everything in the scene i.e. translate target agent into origin and apply global rotation with -heading angle of the target agent, translate back then translate into center point of the image
-				- how the fuck do I do streets?
 		"""
 
 		environment_context = np.full(
@@ -244,16 +307,15 @@ class Rasterizer:
 
 		Rasterizer.global_rotation = -current_target_agent[ : , -1]
 
+		environment_context = Rasterizer.draw_roadgraph(environment_context, roadgraph)
+
 		environment_context = Rasterizer.draw_target_agent(
 			environment_context, past_target_agent, current_target_agent, target_agent_type)
 
 		environment_context = Rasterizer.draw_surrounding_agents(
 			environment_context, past_surrounding_agents, current_surrounding_agents, surrounding_agents_types)
 
-		Rasterizer.draw_traffic_lights(environment_context, traffic_lights)
+		environment_context = Rasterizer.draw_traffic_lights(environment_context, traffic_lights)
 
-		# smoothen images
-		# blur = cv2.GaussianBlur(environment_context, (5, 5), 0)
-		# environment_context = cv2.addWeighted(blur, 1.5, environment_context, -0.5, 0)
-
-		Rasterizer.show_image(environment_context)
+		
+		return environment_context

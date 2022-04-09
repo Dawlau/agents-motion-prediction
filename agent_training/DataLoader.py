@@ -115,7 +115,7 @@ class DataLoader:
 		roadgraph_coords = data["roadgraph_samples/xyz"]
 		roadgraph_type = tf.cast(data["roadgraph_samples/type"], dtype=tf.float32)
 		roadgraph = tf.concat(
-			[roadgraph_coords, roadgraph_type], -1)
+			[roadgraph_coords[..., : -1], roadgraph_type], -1)
 		roadgraph_mask = roadgraph_type > 0
 		roadgraph = roadgraph[tf.squeeze(roadgraph_mask)]
 
@@ -234,9 +234,11 @@ class DataLoader:
 						env_context_surrounding_agents,
 						surrounding_agents_types
 					)
+					environment_context = tf.convert_to_tensor(environment_context)
+					# Rasterizer.show_image(environment_context.numpy())
 
-					# yield environment_context, target_agent, surrounding_agents
-					break
+					yield environment_context, target_agent, surrounding_agents
+					# break
 
 
-				break
+				# break
