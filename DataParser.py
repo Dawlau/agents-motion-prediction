@@ -225,6 +225,8 @@ class DataParser:
 				axis=0
 			)
 
+		self.parsed["roadgraph_samples/type"] = self.parsed["roadgraph_samples/type"].astype(np.int32)
+
 
 	def get_landmarks_by_id(self, id_):
 

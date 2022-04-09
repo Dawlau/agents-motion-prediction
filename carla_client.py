@@ -7,6 +7,10 @@ import pygame
 from DataParser import DataParser
 import math
 from config import *
+from RasterOnCNN import prerender
+import torch
+import numpy as np
+from agents.navigation.controller import VehiclePIDController
 
 
 def init_scenario(client):
@@ -67,6 +71,38 @@ def spawn_ego_agent(client):
 	return ego_agent, ego_agent_camera
 
 
+def get_trajectory(model, parsed, ego_agent):
+	data   = prerender.merge(parsed, False)[0]
+
+	raster = data["raster"].astype(np.float32)
+	raster = raster.transpose(2, 1, 0) / 255
+	raster = torch.tensor(raster)
+	raster = torch.unsqueeze(raster, dim=0).cuda()
+
+	confidences_logits, logits = model(raster)
+	confidences_logits = torch.squeeze(confidences_logits)
+	logits = torch.squeeze(logits)
+	trajectory = logits[torch.argmax(confidences_logits, dim=0)].cpu().detach().numpy()
+
+	yaw = data["yaw"]
+
+	rot_matrix = np.array([
+		[np.cos(yaw), -np.sin(yaw)],
+		[np.sin(yaw), np.cos(yaw)],
+	])
+
+	x = ego_agent.get_location().x
+	y = ego_agent.get_location().y
+
+	trajectory = trajectory @ rot_matrix + np.array([x, y])
+
+	return trajectory
+
+
+def euclidean_distance(a, b):
+	return math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
+
+
 def main():
 
 	pygame.init()
@@ -77,12 +113,11 @@ def main():
 		client.set_timeout(2.0)
 
 		# print(client.get_available_maps())
-		# world = client.load_world("Town01_Opt")
+		# world = client.load_world("Town02")
 
 		vehicles, walkers = init_scenario(client)
 		ego_agent, ego_agent_camera = spawn_ego_agent(client)
-		ego_agent.apply_control(carla.VehicleControl(throttle=1000, brake=0))
-		ego_agent.set_autopilot(True)
+		# ego_agent.set_autopilot(True)
 
 		world = client.get_world()
 		world_map = world.get_map()
@@ -104,6 +139,17 @@ def main():
 			agents=vehicles + walkers
 		)
 
+		model = torch.jit.load(MODEL_PATH).cuda().eval()
+
+		waypoints = []
+		current_waypoint_idx = 0
+
+		control = VehiclePIDController(
+			ego_agent,
+			args_lateral = {'K_P': 1, 'K_D': 0.8, 'K_I': 0.8, 'dt': 1.0 / 10.0},
+			args_longitudinal = {'K_P': 1, 'K_D': 0.8, 'K_I': 0.8, 'dt': 1.0 / 10.0}
+		)
+		speed = 15
 
 		start_time = time.time()
 		while True:
@@ -111,16 +157,46 @@ def main():
 			world.get_spectator().set_transform(ego_agent_camera.get_transform())
 
 			clock.tick()
-			fps = clock.get_fps()
 
+			for waypoint in waypoints:
+				location = waypoint.transform.location
+				draw_location = carla.Location(
+					location.x,
+					location.y,
+					location.z + 2,
+				)
+				world.debug.draw_string(draw_location, "o", draw_shadow=False,
+											 color=carla.Color(r=255, g=0, b=0), life_time=0.01)
 
-			current_time = time.time()
-			if current_time - start_time >= SAMPLING_RATE:
+			if time.time() - start_time >= SAMPLING_RATE:
 				data_parser.update()
-				print(data_parser.parsed["state/current/x"][0])
-				print(f"Overhead: {current_time - start_time}")
-				print(f"FPS: {fps}")
-				start_time = current_time
+
+			if current_waypoint_idx == len(waypoints):
+				trajectory = get_trajectory(model, data_parser.parsed, ego_agent)
+				waypoints = []
+
+				for vertex in trajectory:
+					waypoint = carla.Location(
+						vertex[0],
+						vertex[1],
+						ego_agent.get_location().z
+					)
+					waypoints.append(world_map.get_waypoint(waypoint))
+
+
+				current_waypoint_idx = 0
+
+			ego_agent.apply_control(control.run_step(speed, waypoints[current_waypoint_idx]))
+
+			# check dist
+			if euclidean_distance(ego_agent.get_location(), waypoints[current_waypoint_idx].transform.location) < DISTANCE_THRESHOLD:
+				current_waypoint_idx += 1
+
+			fps = clock.get_fps()
+			print(f"Overhead: {time.time() - start_time}")
+			print(f"FPS: {fps}")
+			start_time = time.time()
+
 			world.tick()
 
 	finally:
@@ -132,6 +208,7 @@ def main():
 		settings = world.get_settings()
 		settings.synchronous_mode = False
 		world.apply_settings(settings)
+
 
 if __name__ == '__main__':
 	main()

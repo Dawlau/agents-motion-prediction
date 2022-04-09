@@ -76,8 +76,14 @@ scenarios = tf.data.TFRecordDataset("/home/dawlau/waymo_dataset/training/trainin
 for scenario in scenarios.as_numpy_iterator():
 	data = tf.io.parse_single_example(scenario, features_description)
 	print(data["roadgraph_samples/xyz"].shape)
-	# x = data["state/current/x"]
-	# y = data["state/current/y"]
+	x = data["state/current/x"][0]
+	y = data["state/current/y"][0]
+
+	fx = data["state/future/x"][0]
+	fy = data["state/future/y"][0]
+
+	print(y)
+	print(fy)
 
 	# vertices = list(zip(x, y))
 	# dist = [get_dist(vertices[0], vertices[i]) for i in range(1, len(vertices)) if data["state/current/valid"][i]]
@@ -87,6 +93,6 @@ for scenario in scenarios.as_numpy_iterator():
 		# print(get_dist(vertex))
 		# break
 
-	# break
+	break
 
 
