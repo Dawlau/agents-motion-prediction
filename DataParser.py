@@ -2,6 +2,8 @@ import numpy as np
 import carla
 from LaneMarking import LaneMarking
 from config import *
+import math
+import time
 
 
 class DataParser:
@@ -39,8 +41,13 @@ class DataParser:
 
 		for traffic_light in self.get_traffic_lights():
 			valid = np.array([[traffic_light is not None]])
-			id_   = np.array([[traffic_light.id if valid else -1]])
-			state = np.array([[hash(traffic_light.state) + 4 if valid else -1]])
+			if traffic_light is None:
+				id_   = np.array([[-1]])
+				state = np.array([[-1]])
+			else:
+				road_id, traffic_light_state = traffic_light
+				id_   = np.array([[road_id]])
+				state = np.array([[traffic_light_state]])
 
 			values = [id_, state, valid]
 
@@ -58,16 +65,17 @@ class DataParser:
 
 		for i, agent in enumerate([self.ego_agent] + self.agents):
 			if agent is not None:
+				bbox_yaw = math.pi * agent.get_transform().rotation.yaw / 180
 				past_x 			 = np.array([[agent.get_transform().location.x] * NUM_PAST_FRAMES])
 				past_y 			 = np.array([[agent.get_transform().location.y] * NUM_PAST_FRAMES])
 				past_speed 		 = np.array([[0] * NUM_PAST_FRAMES])
-				past_vel_yaw 	 = np.array([[agent.get_angular_velocity().z] * NUM_PAST_FRAMES])
-				past_bbox_yaw 	 = np.array([[agent.bounding_box.rotation.yaw] * NUM_PAST_FRAMES])
+				past_vel_yaw 	 = np.array([[bbox_yaw] * NUM_PAST_FRAMES])
+				past_bbox_yaw 	 = np.array([[bbox_yaw] * NUM_PAST_FRAMES])
 				current_x 		 = np.array([[agent.get_transform().location.x]])
 				current_y 		 = np.array([[agent.get_transform().location.y]])
 				current_speed 	 = np.array([[0]])
-				current_vel_yaw  = np.array([[agent.get_angular_velocity().z]])
-				current_bbox_yaw = np.array([[agent.bounding_box.rotation.yaw]])
+				current_vel_yaw  = np.array([[bbox_yaw]])
+				current_bbox_yaw = np.array([[bbox_yaw]])
 				current_width 	 = np.array([[2 * agent.bounding_box.extent.x]])
 				current_length 	 = np.array([[2 * agent.bounding_box.extent.y]])
 				future_x   		 = np.array([[-1] * NUM_FUTURE_FRAMES])
@@ -130,7 +138,7 @@ class DataParser:
 
 				id_   = np.array([[int(waypoint.road_id)]])
 				type_ = np.array([[1]])
-				valid = np.array([[-1]])
+				valid = np.array([[1]])
 				xyz   = np.array([[location.x, location.y, location.z]])
 
 				values = [id_, type_, valid, xyz]
@@ -141,12 +149,13 @@ class DataParser:
 		# stop signs
 
 		stop_signs = self.get_landmarks_by_id("206")
+		stop_sign_base_id = np.max(self.parsed["roadgraph_samples/id"])
 
 		if len(stop_signs):
 			for stop_sign in stop_signs:
-				location = stop_sign.transform.location
+				location = stop_sign.get_location()
 
-				id_   	 = np.array([[int(stop_sign.id)]])
+				id_   	 = np.array([[int(stop_sign_base_id + stop_sign.id)]])
 				type_ 	 = np.array([[17]])
 				valid 	 = np.array([[1]])
 				xyz 	 = np.array([[location.x, location.y, location.z]])
@@ -166,7 +175,7 @@ class DataParser:
 			start_location = crosswalk_locations[0]
 			for i, location in enumerate(crosswalk_locations[0 : ]):
 				if i + 1 >= len(crosswalk_locations):
-					id_   	 = np.array([[crosswalk_id]])
+					id_   	 = np.array([[int(crosswalk_id)]])
 					type_ 	 = np.array([[18]])
 					valid 	 = np.array([[1]])
 					xyz 	 = np.array([[location.x, location.y, location.z]])
@@ -182,7 +191,7 @@ class DataParser:
 					crosswalk_id += 1
 					start_location = crosswalk_locations[i + 1] if i else crosswalk_locations[0]
 
-				id_   	 = np.array([[crosswalk_id]])
+				id_   	 = np.array([[int(crosswalk_id)]])
 				type_ 	 = np.array([[18]])
 				valid 	 = np.array([[1]])
 				xyz 	 = np.array([[location.x, location.y, location.z]])
@@ -200,7 +209,7 @@ class DataParser:
 		for lane_marking in lane_markings:
 			location = lane_marking.get_location()
 
-			id_   = np.array([[lane_marking.get_id()]])
+			id_   = np.array([[int(lane_marking.get_id())]])
 			type_ = np.array([[lane_marking.get_type()]])
 			valid = np.array([[1]])
 			xyz   = np.array([[location.x, location.y, location.z]])
@@ -216,6 +225,8 @@ class DataParser:
 			self.parsed[key] = self.parsed[key][ : MAX_ROADGRAPH_SAMPLES_NUM]
 			if key == "roadgraph_samples/xyz":
 				padding_value = [[-1, -1, -1]]
+			elif key == "roadgraph_samples/valid":
+				padding_value = [[0]]
 			else:
 				padding_value = [[-1]]
 
@@ -231,15 +242,19 @@ class DataParser:
 	def get_landmarks_by_id(self, id_):
 
 		landmarks = self.world_map.get_all_landmarks_of_type(id_)
+
+		landmarks = {
+			landmark.id: landmark for landmark in landmarks
+		}.values()
+
 		true_landmarks = []
 		for lmrk in landmarks:
-			landmark = self.world.get_traffic_light(lmrk)
+			if id_ == "206":
+				landmark = self.world.get_traffic_sign(lmrk)
+			else:
+				landmark = self.world.get_traffic_light(lmrk)
 			if landmark:
 				true_landmarks.append(landmark)
-
-		true_landmarks = {
-			landmark.id : landmark for landmark in true_landmarks
-		}.values()
 
 		return list(true_landmarks)
 
@@ -254,13 +269,32 @@ class DataParser:
 
 			return (ego_agent_x - traffic_light_x) ** 2 + (ego_agent_y - traffic_light_y) ** 2
 
+
+		def distance_filter(traffic_light):
+			traffic_light_x = traffic_light.get_location().x
+			traffic_light_y = traffic_light.get_location().y
+			ego_agent_x 	= self.ego_agent.get_location().x
+			ego_agent_y 	= self.ego_agent.get_location().y
+
+			distance = math.sqrt((ego_agent_x - traffic_light_x) ** 2 + (ego_agent_y - traffic_light_y) ** 2)
+
+			return distance <= MAX_TRAFFIC_LIGHT_DISTANCE
+
 		traffic_lights = self.get_landmarks_by_id("1000001")
 
+		traffic_lights = list(filter(distance_filter, traffic_lights))
 		traffic_lights.sort(key=distance_comparison)
-		traffic_lights = traffic_lights[ : MAX_TRAFFIC_LIGHTS_NUM]
-		traffic_lights = traffic_lights + [None] * (MAX_TRAFFIC_LIGHTS_NUM - len(traffic_lights))
 
-		return traffic_lights
+		affected_roads = []
+
+		for traffic_light in traffic_lights:
+			for affected_road in traffic_light.get_affected_lane_waypoints():
+				affected_roads.append((affected_road.road_id, hash(traffic_light.state) + 4))
+
+		affected_roads = affected_roads[ : MAX_TRAFFIC_LIGHTS_NUM]
+		affected_roads = affected_roads + [None] * (MAX_TRAFFIC_LIGHTS_NUM - len(traffic_lights))
+
+		return affected_roads
 
 
 	def get_lane_markings(self, base_id):
@@ -270,13 +304,13 @@ class DataParser:
 		for waypoint in self.world_map.generate_waypoints(10):
 			lane_location = waypoint.transform.location
 
+			right_vector = waypoint.transform.get_right_vector()
+
+			right_marking_location = lane_location + waypoint.lane_width / 2 * right_vector
+			left_marking_location = lane_location - waypoint.lane_width / 2 * right_vector
+
 			if waypoint.right_lane_marking.type is not carla.LaneMarkingType.NONE:
 				marking_id = waypoint.road_id + 2 * base_id
-				right_marking_location = carla.Vector3D(
-					lane_location.x ,
-					lane_location.y + waypoint.lane_width / 2,
-					lane_location.z
-				)
 
 				right_lane_markings.append(LaneMarking(
 					marking_id,
@@ -288,22 +322,16 @@ class DataParser:
 
 			if waypoint.left_lane_marking.type is not carla.LaneMarkingType.NONE:
 				marking_id = waypoint.road_id + base_id
-				left_marking_location = carla.Vector3D(
-					lane_location.x ,
-					lane_location.y - waypoint.lane_width / 2,
-					lane_location.z
-				)
 
 				left_lane_markings.append(LaneMarking(
 					marking_id,
-					waypoint.right_lane_marking.type,
-					waypoint.right_lane_marking.color,
+					waypoint.left_lane_marking.type,
+					waypoint.left_lane_marking.color,
 					left_marking_location,
 					1
 				))
 
 		lane_markings = left_lane_markings + right_lane_markings
-		lane_markings = list(set(lane_markings))
 		lane_markings.sort(key=lambda x: x.get_id())
 
 		return lane_markings
@@ -323,8 +351,16 @@ class DataParser:
 			prev_location = np.array([self.parsed["state/past/x"][i][-1], self.parsed["state/past/y"][i][-1]])
 
 			current_speed 	 = np.array([np.linalg.norm(location - prev_location) / SAMPLING_RATE])
-			current_vel_yaw  = np.array([agent.get_angular_velocity().z])
-			current_bbox_yaw = np.array([agent.bounding_box.rotation.yaw])
+			bbox_yaw = math.pi * agent.get_transform().rotation.yaw / 180
+
+			if current_speed < MIN_SPEED:
+				vel_yaw = bbox_yaw
+			else:
+				velocity = agent.get_velocity()
+				vel_yaw = math.atan2(velocity.y, velocity.x)
+
+			current_vel_yaw  = np.array([vel_yaw])
+			current_bbox_yaw = np.array([bbox_yaw])
 
 			values = [current_x, current_y, current_speed, current_vel_yaw, current_bbox_yaw]
 

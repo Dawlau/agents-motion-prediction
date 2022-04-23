@@ -16,7 +16,7 @@ class LaneMarking(object):
 
 
 	def __eq__(self, other):
-		return self.location == other.location
+		return self.id == other.id
 
 
 	def get_id(self):
@@ -38,4 +38,9 @@ class LaneMarking(object):
 				return 9
 			elif self.color is carla.LaneMarkingColor.White:
 				return 6
-		return 8
+		elif self.type is carla.LaneMarkingType.SolidSolid:
+			if self.color is carla.LaneMarkingColor.Yellow:
+				return 12
+			elif self.color is carla.LaneMarkingColor.White:
+				return 8
+		return Exception("Invalid lane marking type or color")

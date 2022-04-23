@@ -21,6 +21,11 @@ def init_scenario(client):
 	world = client.get_world()
 	blueprint_library = world.get_blueprint_library()
 
+	# for x in blueprint_library.filter("vehicle"):
+		# print(x)
+
+	# time.sleep(100)
+
 	for _ in range(VEHICLES_NO):
 		bp = random.choice(blueprint_library.filter('vehicle'))
 
@@ -52,17 +57,30 @@ def init_scenario(client):
 	return vehicles, walkers
 
 
-def spawn_ego_agent(client):
+def spawn_ego_agent(client):#, vehicle):
 
 	world = client.get_world()
 	blueprint_library = world.get_blueprint_library()
-	bp = random.choice(blueprint_library.filter('vehicle'))
+	bp = random.choice(blueprint_library.filter('vehicle.tesla.model3'))
 
 	ego_agent = None
 
+	world_map = world.get_map()
+	# best_distance = sys.float_info.max
+	# index = -1
+
+	# for i, point in enumerate(world_map.get_spawn_points()):
+	# 	dist = euclidean_distance(point.location, vehicle.get_transform().location)
+	# 	if dist < best_distance:
+	# 		best_distance = dist
+	# 		index = i
+
 	while ego_agent is None:
-		transform = random.choice(world.get_map().get_spawn_points())
+		# index = random.choice(list(range(len(world_map.get_spawn_points()))))
+		index = 24
+		transform = world_map.get_spawn_points()[index]
 		ego_agent = world.try_spawn_actor(bp, transform)
+	print(index)
 
 	camera_bp = world.get_blueprint_library().find('sensor.other.collision')
 	camera_transform = carla.Transform(carla.Location(x=-7, z=3))
@@ -82,9 +100,10 @@ def get_trajectory(model, parsed, ego_agent):
 	confidences_logits, logits = model(raster)
 	confidences_logits = torch.squeeze(confidences_logits)
 	logits = torch.squeeze(logits)
+	confidences_logits = torch.softmax(confidences_logits, dim=-1)
 	trajectory = logits[torch.argmax(confidences_logits, dim=0)].cpu().detach().numpy()
 
-	yaw = data["yaw"]
+	yaw = -data["yaw"]
 
 	rot_matrix = np.array([
 		[np.cos(yaw), -np.sin(yaw)],
@@ -97,6 +116,7 @@ def get_trajectory(model, parsed, ego_agent):
 	trajectory = trajectory @ rot_matrix + np.array([x, y])
 
 	return trajectory
+
 
 
 def euclidean_distance(a, b):
@@ -116,7 +136,8 @@ def main():
 		# world = client.load_world("Town02")
 
 		vehicles, walkers = init_scenario(client)
-		ego_agent, ego_agent_camera = spawn_ego_agent(client)
+		# vehicles, walkers = [], []
+		ego_agent, ego_agent_camera = spawn_ego_agent(client)#, vehicles[0])
 		# ego_agent.set_autopilot(True)
 
 		world = client.get_world()
@@ -146,19 +167,19 @@ def main():
 
 		control = VehiclePIDController(
 			ego_agent,
-			args_lateral = {'K_P': 1, 'K_D': 0.8, 'K_I': 0.8, 'dt': 1.0 / 10.0},
-			args_longitudinal = {'K_P': 1, 'K_D': 0.8, 'K_I': 0.8, 'dt': 1.0 / 10.0}
+			args_lateral = {'K_P': 1.0, 'K_D': 0.8, 'K_I': 0.8, 'dt': 1.0 / 10.0},
+			args_longitudinal = {'K_P': 1.0, 'K_D': 0.8, 'K_I': 0.8, 'dt': 1.0 / 10.0}
 		)
 		speed = 15
-
+		world.get_spectator().set_transform(ego_agent_camera.get_transform())
 		start_time = time.time()
 		while True:
 			# move spectator with ego agent
-			world.get_spectator().set_transform(ego_agent_camera.get_transform())
+			# world.get_spectator().set_transform(ego_agent_camera.get_transform())
 
 			clock.tick()
 
-			for waypoint in waypoints:
+			for i, waypoint in enumerate(waypoints):
 				location = waypoint.transform.location
 				draw_location = carla.Location(
 					location.x,
@@ -166,23 +187,26 @@ def main():
 					location.z + 2,
 				)
 				world.debug.draw_string(draw_location, "o", draw_shadow=False,
-											 color=carla.Color(r=255, g=0, b=0), life_time=0.01)
+											 color=carla.Color(r=255, g=0, b=0) if i != current_waypoint_idx else carla.Color(r=255, g=0, b=255), life_time=0.01)
 
 			if time.time() - start_time >= SAMPLING_RATE:
 				data_parser.update()
+				fps = clock.get_fps()
+				print(f"Overhead: {time.time() - start_time}")
+				print(f"FPS: {fps}")
+				start_time = time.time()
 
-			if current_waypoint_idx == len(waypoints):
+			if current_waypoint_idx >= len(waypoints):
 				trajectory = get_trajectory(model, data_parser.parsed, ego_agent)
 				waypoints = []
 
-				for vertex in trajectory:
+				for vertex in trajectory[ : 5]:
 					waypoint = carla.Location(
 						vertex[0],
 						vertex[1],
 						ego_agent.get_location().z
 					)
 					waypoints.append(world_map.get_waypoint(waypoint))
-
 
 				current_waypoint_idx = 0
 
@@ -191,11 +215,6 @@ def main():
 			# check dist
 			if euclidean_distance(ego_agent.get_location(), waypoints[current_waypoint_idx].transform.location) < DISTANCE_THRESHOLD:
 				current_waypoint_idx += 1
-
-			fps = clock.get_fps()
-			print(f"Overhead: {time.time() - start_time}")
-			print(f"FPS: {fps}")
-			start_time = time.time()
 
 			world.tick()
 
