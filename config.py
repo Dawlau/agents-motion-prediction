@@ -17,7 +17,7 @@ DISTANCE_BETWEEN_WAYPOINTS = 0.5
 MAX_TRAFFIC_LIGHTS_NUM = 16
 MAX_ROADGRAPH_SAMPLES_NUM = 20000
 SAMPLING_RATE = 0.1
-DISTANCE_THRESHOLD = 0.8
+DISTANCE_THRESHOLD = 0.5
 MIN_SPEED = 0.2
 MAX_TRAFFIC_LIGHT_DISTANCE = 50.0
 
@@ -27,7 +27,8 @@ WALKERS_NO  = 0
 TO_UPDATE_INFO = 10
 
 RASTER_CNN_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
-MODEL_PATH = os.path.join(RASTER_CNN_PATH, "RasterOnCNN", "resnet18.pt")
+# MODEL_PATH = os.path.join(RASTER_CNN_PATH, "RasterOnCNN_Resnet18", "resnet18.pt")
+MODEL_PATH = os.path.join(RASTER_CNN_PATH, "RasterOnCNN_Xception71", "test_xception71_263000_dev_131.pth")
 
 CARLA_AGENTS_MODULE_PATH = "/opt/carla-simulator/PythonAPI/carla"
 

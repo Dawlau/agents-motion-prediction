@@ -7,7 +7,9 @@ import pygame
 from DataParser import DataParser
 import math
 from config import *
-from RasterOnCNN import prerender
+# from RasterOnCNN_Resnet18 import prerender
+from RasterOnCNN_Xception71 import prerender
+from RasterOnCNN_Xception71.train import N_TRAJS, TL, get_model, RESIZE
 import torch
 import numpy as np
 from agents.navigation.controller import VehiclePIDController
@@ -97,7 +99,11 @@ def get_trajectory(model, parsed, ego_agent):
 	raster = torch.tensor(raster)
 	raster = torch.unsqueeze(raster, dim=0).cuda()
 
-	confidences_logits, logits = model(raster)
+	# confidences_logits, logits = model(raster) # for resnet18
+	outputs = model(raster)
+	confidences_logits, logits = outputs[:,:N_TRAJS], outputs[:,N_TRAJS:]
+	logits = logits.view(raster.shape[0], N_TRAJS, TL, 2)
+
 	confidences_logits = torch.squeeze(confidences_logits)
 	logits = torch.squeeze(logits)
 	confidences_logits = torch.softmax(confidences_logits, dim=-1)
@@ -136,9 +142,7 @@ def main():
 		# world = client.load_world("Town02")
 
 		vehicles, walkers = init_scenario(client)
-		# vehicles, walkers = [], []
 		ego_agent, ego_agent_camera = spawn_ego_agent(client)#, vehicles[0])
-		# ego_agent.set_autopilot(True)
 
 		world = client.get_world()
 		world_map = world.get_map()
@@ -160,7 +164,10 @@ def main():
 			agents=vehicles + walkers
 		)
 
-		model = torch.jit.load(MODEL_PATH).cuda().eval()
+		# model = torch.jit.load(MODEL_PATH).cuda().eval() # for resnet18 backbone
+		model = get_model("xception71", in_ch=47).cuda()
+		model.load_state_dict(torch.load(MODEL_PATH)["model_state_dict"])
+		model.eval()
 
 		waypoints = []
 		current_waypoint_idx = 0
@@ -179,16 +186,6 @@ def main():
 
 			clock.tick()
 
-			for i, waypoint in enumerate(waypoints):
-				location = waypoint.transform.location
-				draw_location = carla.Location(
-					location.x,
-					location.y,
-					location.z + 2,
-				)
-				world.debug.draw_string(draw_location, "o", draw_shadow=False,
-											 color=carla.Color(r=255, g=0, b=0) if i != current_waypoint_idx else carla.Color(r=255, g=0, b=255), life_time=0.01)
-
 			if time.time() - start_time >= SAMPLING_RATE:
 				data_parser.update()
 				fps = clock.get_fps()
@@ -200,7 +197,7 @@ def main():
 				trajectory = get_trajectory(model, data_parser.parsed, ego_agent)
 				waypoints = []
 
-				for vertex in trajectory[ : 5]:
+				for vertex in trajectory[ : 10]:
 					waypoint = carla.Location(
 						vertex[0],
 						vertex[1],
@@ -215,6 +212,24 @@ def main():
 			# check dist
 			if euclidean_distance(ego_agent.get_location(), waypoints[current_waypoint_idx].transform.location) < DISTANCE_THRESHOLD:
 				current_waypoint_idx += 1
+
+			destination = waypoints[-1].transform.location - ego_agent.get_location()
+			bbox_yaw = data_parser.parsed["state/current/bbox_yaw"][0]
+			if math.cos(bbox_yaw) * destination.x + math.sin(bbox_yaw) * destination.y < 0:
+				color = carla.Color(r=0, g=255, b=0)
+			else:
+				color = carla.Color(r=255, g=0, b=0)
+			# data_parser.parsed["state/current/bbox_yaw"]
+
+			for i, waypoint in enumerate(waypoints):
+				location = waypoint.transform.location
+				draw_location = carla.Location(
+					location.x,
+					location.y,
+					location.z + 2,
+				)
+				world.debug.draw_string(draw_location, "o", draw_shadow=False,
+											 color=color, life_time=0.001)
 
 			world.tick()
 
