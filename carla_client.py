@@ -177,7 +177,7 @@ def main():
 			args_lateral = {'K_P': 1.0, 'K_D': 0.8, 'K_I': 0.8, 'dt': 1.0 / 10.0},
 			args_longitudinal = {'K_P': 1.0, 'K_D': 0.8, 'K_I': 0.8, 'dt': 1.0 / 10.0}
 		)
-		speed = 15
+		speed = 0
 		world.get_spectator().set_transform(ego_agent_camera.get_transform())
 		start_time = time.time()
 		while True:
@@ -193,11 +193,15 @@ def main():
 				print(f"FPS: {fps}")
 				start_time = time.time()
 
+			# check dist
+			if current_waypoint_idx < len(waypoints) and euclidean_distance(ego_agent.get_location(), waypoints[current_waypoint_idx].transform.location) < DISTANCE_THRESHOLD:
+				current_waypoint_idx += 1
+
 			if current_waypoint_idx >= len(waypoints):
 				trajectory = get_trajectory(model, data_parser.parsed, ego_agent)
 				waypoints = []
 
-				for vertex in trajectory[ : 10]:
+				for vertex in trajectory[ : 20]:
 					waypoint = carla.Location(
 						vertex[0],
 						vertex[1],
@@ -209,27 +213,25 @@ def main():
 
 			ego_agent.apply_control(control.run_step(speed, waypoints[current_waypoint_idx]))
 
-			# check dist
-			if euclidean_distance(ego_agent.get_location(), waypoints[current_waypoint_idx].transform.location) < DISTANCE_THRESHOLD:
-				current_waypoint_idx += 1
-
 			destination = waypoints[-1].transform.location - ego_agent.get_location()
 			bbox_yaw = data_parser.parsed["state/current/bbox_yaw"][0]
 			if math.cos(bbox_yaw) * destination.x + math.sin(bbox_yaw) * destination.y < 0:
-				color = carla.Color(r=0, g=255, b=0)
+				# color = carla.Color(r=0, g=255, b=0)
+				waypoints = []
+				current_waypoint_idx = 0
+				speed = 0
 			else:
-				color = carla.Color(r=255, g=0, b=0)
-			# data_parser.parsed["state/current/bbox_yaw"]
+				speed = 15
 
-			for i, waypoint in enumerate(waypoints):
-				location = waypoint.transform.location
+
+			for waypoint in waypoints:
 				draw_location = carla.Location(
-					location.x,
-					location.y,
-					location.z + 2,
+					waypoint.transform.location.x,
+					waypoint.transform.location.y,
+					2
 				)
-				world.debug.draw_string(draw_location, "o", draw_shadow=False,
-											 color=color, life_time=0.001)
+				world.debug.draw_string(draw_location, "o", color=carla.Color(r=255, g=0, b=0), draw_shadow=False, life_time=0.01)
+
 
 			world.tick()
 
