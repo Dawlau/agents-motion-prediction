@@ -1,17 +1,15 @@
+from config import *
 import os
-import sys
 import carla
 import random
 import time
 import pygame
 from DataParser import DataParser
 import math
-from config import *
-# from RasterOnCNN_Resnet18 import prerender
-from RasterOnCNN_Xception71 import prerender
-from RasterOnCNN_Xception71.train import N_TRAJS, TL, get_model, RESIZE
 import torch
 import numpy as np
+import argparse
+import timm
 from agents.navigation.controller import VehiclePIDController
 
 
@@ -23,16 +21,14 @@ def init_scenario(client):
 	world = client.get_world()
 	blueprint_library = world.get_blueprint_library()
 
-	# for x in blueprint_library.filter("vehicle"):
-		# print(x)
-
-	# time.sleep(100)
-
 	for _ in range(VEHICLES_NO):
 		bp = random.choice(blueprint_library.filter('vehicle'))
 
 		transform = random.choice(world.get_map().get_spawn_points())
 		vehicle = world.try_spawn_actor(bp, transform)
+
+		while vehicle is None:
+			vehicle = world.try_spawn_actor(bp, transform)
 
 		if vehicle is not None:
 			vehicles.append(vehicle)
@@ -52,6 +48,11 @@ def init_scenario(client):
 
 			walker_controller = world.try_spawn_actor(controller_bp, carla.Transform(), walker)
 			world.wait_for_tick()
+
+			while walker_controller is None:
+				walker_controller = world.try_spawn_actor(controller_bp, carla.Transform(), walker)
+				world.wait_for_tick()
+
 			walker_controller.start()
 			walker_controller.go_to_location(world.get_random_location_from_navigation())
 			walkers.append(walker)
@@ -59,7 +60,7 @@ def init_scenario(client):
 	return vehicles, walkers
 
 
-def spawn_ego_agent(client):#, vehicle):
+def spawn_ego_agent(client, spawn_index):
 
 	world = client.get_world()
 	blueprint_library = world.get_blueprint_library()
@@ -68,21 +69,14 @@ def spawn_ego_agent(client):#, vehicle):
 	ego_agent = None
 
 	world_map = world.get_map()
-	# best_distance = sys.float_info.max
-	# index = -1
-
-	# for i, point in enumerate(world_map.get_spawn_points()):
-	# 	dist = euclidean_distance(point.location, vehicle.get_transform().location)
-	# 	if dist < best_distance:
-	# 		best_distance = dist
-	# 		index = i
 
 	while ego_agent is None:
-		# index = random.choice(list(range(len(world_map.get_spawn_points()))))
-		index = 24
+		if spawn_index is None:
+			index = random.choice(list(range(len(world_map.get_spawn_points()))))
+		else:
+			index = spawn_index
 		transform = world_map.get_spawn_points()[index]
 		ego_agent = world.try_spawn_actor(bp, transform)
-	print(index)
 
 	camera_bp = world.get_blueprint_library().find('sensor.other.collision')
 	camera_transform = carla.Transform(carla.Location(x=-7, z=3))
@@ -91,18 +85,20 @@ def spawn_ego_agent(client):#, vehicle):
 	return ego_agent, ego_agent_camera
 
 
-def get_trajectory(model, parsed, ego_agent):
-	data   = prerender.merge(parsed, False)[0]
+def get_trajectory(model, parsed, ego_agent, merge, backbone):
+	data   = merge(parsed)[0]
 
 	raster = data["raster"].astype(np.float32)
 	raster = raster.transpose(2, 1, 0) / 255
 	raster = torch.tensor(raster)
 	raster = torch.unsqueeze(raster, dim=0).cuda()
 
-	# confidences_logits, logits = model(raster) # for resnet18
-	outputs = model(raster)
-	confidences_logits, logits = outputs[:,:N_TRAJS], outputs[:,N_TRAJS:]
-	logits = logits.view(raster.shape[0], N_TRAJS, TL, 2)
+	if backbone == "resnet18":
+		confidences_logits, logits = model(raster)
+	else:
+		outputs = model(raster)
+		confidences_logits, logits = outputs[:,:N_TRAJS], outputs[:,N_TRAJS:]
+		logits = logits.view(raster.shape[0], N_TRAJS, TL, 2)
 
 	confidences_logits = torch.squeeze(confidences_logits)
 	logits = torch.squeeze(logits)
@@ -124,12 +120,100 @@ def get_trajectory(model, parsed, ego_agent):
 	return trajectory
 
 
-
 def euclidean_distance(a, b):
 	return math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2)
 
 
+def parse_arguments():
+	parser = argparse.ArgumentParser()
+
+	parser.add_argument(
+		"--backbone",
+		type=str,
+		required=False,
+		default="resnet18"
+	)
+
+	parser.add_argument(
+		"--spawn_index",
+		type=int,
+		required=False,
+		default=None
+	)
+
+	parser.add_argument(
+		"--map",
+		type=str,
+		required=False,
+		default=None
+	)
+
+	parser.add_argument(
+		"--future_frames",
+		type=int,
+		required=False,
+		default=NUM_FUTURE_FRAMES
+	)
+
+	parser.add_argument(
+		"--frames_to_skip",
+		type=int,
+		required=False,
+		default=1
+	)
+
+	args = parser.parse_args()
+
+	if args.future_frames < 1 or args.future_frames > NUM_FUTURE_FRAMES:
+		raise Exception("The number of future frames must be within the threshold")
+
+	if args.frames_to_skip < 1 or args.frames_to_skip > NUM_FUTURE_FRAMES:
+		raise Exception("The number of frames to skip must be valid")
+
+	return args
+
+
+def load_model(backbone):
+
+	model_path = os.path.join(MODELS_PATH, f"{backbone}.pt")
+
+	if backbone == "resnet18":
+		model = torch.jit.load(model_path).cuda().eval()
+		from prerender_resnet18 import merge
+	elif backbone == "xception71":
+		model = timm.create_model(
+			"xception71",
+			pretrained=True,
+			in_chans=IN_CHANNELS,
+			num_classes=N_TRAJS * 2 * TL + N_TRAJS,
+		).cuda()
+		model.load_state_dict(torch.load(model_path)["model_state_dict"])
+		model.eval()
+		from prerender_xception71 import merge
+	else:
+		raise Exception("Invalid backbone")
+
+	return model, merge
+
+
+def show_trajectory(world, waypoints, color):
+	for waypoint in waypoints:
+		draw_location = carla.Location(
+			waypoint.transform.location.x,
+			waypoint.transform.location.y,
+			2
+		)
+		world.debug.draw_string(draw_location, "o", color=color, draw_shadow=False, life_time=0.01)
+
+
 def main():
+
+	args = parse_arguments()
+	backbone = args.backbone
+	spawn_index = args.spawn_index
+	simulation_map = args.map
+	future_frames = args.future_frames
+	frames_to_skip = args.frames_to_skip
 
 	pygame.init()
 
@@ -138,11 +222,11 @@ def main():
 		client = carla.Client("localhost", 2000)
 		client.set_timeout(2.0)
 
-		# print(client.get_available_maps())
-		# world = client.load_world("Town02")
+		if simulation_map is not None:
+			world = client.load_world(simulation_map)
 
 		vehicles, walkers = init_scenario(client)
-		ego_agent, ego_agent_camera = spawn_ego_agent(client)#, vehicles[0])
+		ego_agent, ego_agent_camera = spawn_ego_agent(client, spawn_index)
 
 		world = client.get_world()
 		world_map = world.get_map()
@@ -152,10 +236,8 @@ def main():
 		settings = world.get_settings()
 		settings.synchronous_mode = True
 		settings.fixed_delta_seconds = 1 / 200
-		# settings.no_rendering_mode = True
 		settings.no_rendering_mode = False
 		world.apply_settings(settings)
-
 
 		data_parser = DataParser(
 			world=world,
@@ -164,10 +246,7 @@ def main():
 			agents=vehicles + walkers
 		)
 
-		# model = torch.jit.load(MODEL_PATH).cuda().eval() # for resnet18 backbone
-		model = get_model("xception71", in_ch=47).cuda()
-		model.load_state_dict(torch.load(MODEL_PATH)["model_state_dict"])
-		model.eval()
+		model, merge = load_model(backbone)
 
 		waypoints = []
 		current_waypoint_idx = 0
@@ -193,15 +272,16 @@ def main():
 				print(f"FPS: {fps}")
 				start_time = time.time()
 
-			# check dist
+			# if the nextpoint has been reached
 			if current_waypoint_idx < len(waypoints) and euclidean_distance(ego_agent.get_location(), waypoints[current_waypoint_idx].transform.location) < DISTANCE_THRESHOLD:
 				current_waypoint_idx += 1
 
+			# get new trajectory if all points have been reached
 			if current_waypoint_idx >= len(waypoints):
-				trajectory = get_trajectory(model, data_parser.parsed, ego_agent)
+				trajectory = get_trajectory(model, data_parser.parsed, ego_agent, merge, backbone)
 				waypoints = []
 
-				for vertex in trajectory[ : 20]:
+				for vertex in trajectory[ : future_frames : frames_to_skip]:
 					waypoint = carla.Location(
 						vertex[0],
 						vertex[1],
@@ -211,26 +291,18 @@ def main():
 
 				current_waypoint_idx = 0
 
-			ego_agent.apply_control(control.run_step(speed, waypoints[current_waypoint_idx]))
+			ego_agent.apply_control(control.run_step(speed, waypoints[current_waypoint_idx])) # move agent to the next waypoint
 
 			destination = waypoints[-1].transform.location - ego_agent.get_location()
 			bbox_yaw = data_parser.parsed["state/current/bbox_yaw"][0]
-			if math.cos(bbox_yaw) * destination.x + math.sin(bbox_yaw) * destination.y < 0:
-				# color = carla.Color(r=0, g=255, b=0)
+			if math.cos(bbox_yaw) * destination.x + math.sin(bbox_yaw) * destination.y < 0: # if the predicted trajectory is backwards
+				show_trajectory(world, waypoints, carla.Color(r=0, g=255, b=0))
 				waypoints = []
 				current_waypoint_idx = 0
 				speed = 0
 			else:
 				speed = 15
-
-
-			for waypoint in waypoints:
-				draw_location = carla.Location(
-					waypoint.transform.location.x,
-					waypoint.transform.location.y,
-					2
-				)
-				world.debug.draw_string(draw_location, "o", color=carla.Color(r=255, g=0, b=0), draw_shadow=False, life_time=0.01)
+				show_trajectory(world, waypoints, carla.Color(r=255, g=0, b=0))
 
 
 			world.tick()
@@ -248,4 +320,3 @@ def main():
 
 if __name__ == '__main__':
 	main()
-

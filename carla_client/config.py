@@ -1,14 +1,8 @@
 import os
 import sys
-import numpy as np
-import torch
-import random
 
-SEED = 42
-
-np.random.seed(SEED)
-random.seed(SEED)
-torch.manual_seed(SEED)
+CARLA_AGENTS_MODULE_PATH = os.path.join(os.path.expanduser("~"), "carla-simulator/PythonAPI/carla")
+sys.path.append(CARLA_AGENTS_MODULE_PATH)
 
 NUM_MAX_AGENTS = 128
 NUM_PAST_FRAMES = 10
@@ -21,16 +15,17 @@ DISTANCE_THRESHOLD = 0.5
 MIN_SPEED = 0.2
 MAX_TRAFFIC_LIGHT_DISTANCE = 50.0
 
-VEHICLES_NO = 2
-WALKERS_NO  = 0
+IN_CHANNELS = 47
+TL = 80
+N_TRAJS = 8
+
+VEHICLES_NO = 10
+WALKERS_NO  = 10
 
 TO_UPDATE_INFO = 10
 
-RASTER_CNN_PATH = os.path.join(os.path.expanduser("~"), "Desktop")
-# MODEL_PATH = os.path.join(RASTER_CNN_PATH, "RasterOnCNN_Resnet18", "resnet18.pt")
-MODEL_PATH = os.path.join(RASTER_CNN_PATH, "RasterOnCNN_Xception71", "test_xception71_263000_dev_131.pth")
+MODELS_PATH = os.path.join("..", "models")
 
-CARLA_AGENTS_MODULE_PATH = "/opt/carla-simulator/PythonAPI/carla"
 
 agents_keys = [
 	"state/past/x",
@@ -108,6 +103,3 @@ traffic_lights_keys_shapes = [
 	(0, 1),
 	(0, 1),
 ]
-
-sys.path.append(RASTER_CNN_PATH)
-sys.path.append(CARLA_AGENTS_MODULE_PATH)

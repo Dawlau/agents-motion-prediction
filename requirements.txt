@@ -1,0 +1,8 @@
+pygame
+numpy
+carla
+torch
+torchvision
+torchaudio
+tqdm
+opencv-python

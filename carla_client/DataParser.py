@@ -223,6 +223,10 @@ class DataParser:
 
 		for key in roadgraph_keys:
 			self.parsed[key] = self.parsed[key][ : MAX_ROADGRAPH_SAMPLES_NUM]
+
+			if self.parsed[key].shape[0] == MAX_ROADGRAPH_SAMPLES_NUM:
+				continue
+
 			if key == "roadgraph_samples/xyz":
 				padding_value = [[-1, -1, -1]]
 			elif key == "roadgraph_samples/valid":
@@ -232,7 +236,7 @@ class DataParser:
 
 			self.parsed[key] = np.append(
 				self.parsed[key],
-				padding_value * (MAX_ROADGRAPH_SAMPLES_NUM - len(self.parsed[key])),
+				padding_value * max(MAX_ROADGRAPH_SAMPLES_NUM - len(self.parsed[key]), 0),
 				axis=0
 			)
 

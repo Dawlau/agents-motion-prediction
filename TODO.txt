@@ -1,5 +1,0 @@
-when car wants to stop, it seems like the trajectory vertices are really close to each other (maybe a stop mechanism for this)
-adaptive speed (no idea how and if it is really needed)
-
-
-indices of interest: 84,  24, 26, 29, 110, 124, 77
