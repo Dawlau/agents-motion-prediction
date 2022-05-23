@@ -24,7 +24,7 @@ WALKERS_NO  = 10
 
 TO_UPDATE_INFO = 10
 
-MODELS_PATH = os.path.join("..", "models")
+MODELS_PATH = "models"
 
 
 agents_keys = [
