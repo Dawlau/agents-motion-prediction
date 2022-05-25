@@ -10,6 +10,7 @@ import torch
 import numpy as np
 import argparse
 import timm
+import keyboard
 from agents.navigation.controller import VehiclePIDController
 
 
@@ -206,6 +207,13 @@ def show_trajectory(world, waypoints, color):
 		world.debug.draw_string(draw_location, "o", color=color, draw_shadow=False, life_time=0.01)
 
 
+def pause_simulation(world):
+	if keyboard.is_pressed("p"):
+		while True:
+			if keyboard.is_pressed("r"):
+				break
+
+
 def main():
 
 	args = parse_arguments()
@@ -296,14 +304,15 @@ def main():
 			destination = waypoints[-1].transform.location - ego_agent.get_location()
 			bbox_yaw = data_parser.parsed["state/current/bbox_yaw"][0]
 			if math.cos(bbox_yaw) * destination.x + math.sin(bbox_yaw) * destination.y < 0: # if the predicted trajectory is backwards
-				show_trajectory(world, waypoints, carla.Color(r=0, g=255, b=0))
+				show_trajectory(world, waypoints, carla.Color(r=255, g=0, b=0))
 				waypoints = []
 				current_waypoint_idx = 0
 				speed = 0
 			else:
-				speed = 15
-				show_trajectory(world, waypoints, carla.Color(r=255, g=0, b=0))
+				speed = SPEED
+				show_trajectory(world, waypoints, carla.Color(r=0, g=255, b=0))
 
+			pause_simulation(world)
 
 			world.tick()
 

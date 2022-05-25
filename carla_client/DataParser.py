@@ -146,6 +146,7 @@ class DataParser:
 				for key, value in zip(roadgraph_keys, values):
 					self.append_to_key(key, value)
 
+
 		# stop signs
 
 		stop_signs = self.get_landmarks_by_id("206")
@@ -201,6 +202,7 @@ class DataParser:
 				for key, value in zip(roadgraph_keys, values):
 					self.append_to_key(key, value)
 
+
 		# lane markings
 
 		base_id = np.max(self.parsed["roadgraph_samples/id"]) + 1
@@ -222,9 +224,7 @@ class DataParser:
 		# padding
 
 		for key in roadgraph_keys:
-			self.parsed[key] = self.parsed[key][ : MAX_ROADGRAPH_SAMPLES_NUM]
-
-			if self.parsed[key].shape[0] == MAX_ROADGRAPH_SAMPLES_NUM:
+			if self.parsed[key].shape[0] >= MAX_ROADGRAPH_SAMPLES_NUM:
 				continue
 
 			if key == "roadgraph_samples/xyz":
@@ -305,7 +305,7 @@ class DataParser:
 		right_lane_markings = []
 		left_lane_markings = []
 
-		for waypoint in self.world_map.generate_waypoints(10):
+		for waypoint in self.roadgraph:
 			lane_location = waypoint.transform.location
 
 			right_vector = waypoint.transform.get_right_vector()

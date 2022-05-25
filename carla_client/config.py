@@ -1,7 +1,7 @@
 import os
 import sys
 
-CARLA_AGENTS_MODULE_PATH = os.path.join(os.path.expanduser("~"), "carla-simulator/PythonAPI/carla")
+CARLA_AGENTS_MODULE_PATH = os.path.join("/home/dawlau/carla-simulator/PythonAPI/carla")
 sys.path.append(CARLA_AGENTS_MODULE_PATH)
 
 NUM_MAX_AGENTS = 128
@@ -14,6 +14,7 @@ SAMPLING_RATE = 0.1
 DISTANCE_THRESHOLD = 0.5
 MIN_SPEED = 0.2
 MAX_TRAFFIC_LIGHT_DISTANCE = 50.0
+SPEED = 30
 
 IN_CHANNELS = 47
 TL = 80
