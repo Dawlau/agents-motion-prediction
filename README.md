@@ -14,7 +14,7 @@ pip install -r requirements.txt
 ```
 Before running the client, install the carla simulator. More information on their official documentation website: https://carla.readthedocs.io/en/latest/start_quickstart/. This implementation has been done for the CARLA simulator version 0.9.13. Although it should be backwards compatible for now, future updates to the simulator might come with breaking changes.
 
-One more things to mention is that you need to have the CARLA "agents" module in your path, which is not by default. You can either do that through a terminal session, or go into carla_client/config.py and change the variable CARLA_AGENTS_MODULE_PATH.
+One more thing to mention is that you need to have the CARLA "agents" module in your path, which is not by default. You can either do that through a terminal session, or go into carla_client/config.py and change the variable CARLA_AGENTS_MODULE_PATH.
 
 ## Available maps by default in the CARLA simulator
 
